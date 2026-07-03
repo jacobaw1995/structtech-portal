@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Client Portal | StructTech</title>
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    :root { --ink:#16191d; --ink2:#232a31; --cream:#F3F1EA; --blue-d:#16466E; --blue:#1C6FA8;
+      --orange:#D9820A; --red:#E24B26; --green:#2E9E5B; --gray:#8a939d; --gray-d:#4a5158; --slate:#6b7580;
+      --mono:'Space Mono',monospace; --cond:'Barlow Condensed',sans-serif; --body:'Barlow',sans-serif; }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { background:#0d0f12; font-family:var(--body); min-height:100vh; color:var(--cream); }
+    button { font-family:var(--body); cursor:pointer; }
+    .sheet { max-width:860px; margin:0 auto; background:var(--ink); min-height:100vh; }
+
+    /* auth screens */
+    .auth { max-width:380px; margin:0 auto; padding:80px 20px; text-align:center; }
+    .auth .wordmark { font-family:var(--cond); font-weight:800; font-size:30px; letter-spacing:1px; text-transform:uppercase; }
+    .auth .wordmark span { color:var(--blue); }
+    .auth .sub { font-family:var(--mono); font-size:10px; letter-spacing:0.2em; color:var(--gray); margin:4px 0 30px; }
+    .auth input { width:100%; background:var(--ink2); border:1px solid #2b3138; border-radius:8px; color:var(--cream);
+      font-size:14px; padding:12px 14px; outline:none; margin-bottom:10px; font-family:var(--body); }
+    .auth input:focus { border-color:var(--blue); }
+    .auth button { width:100%; background:var(--orange); border:none; color:#fff; font-weight:700; font-size:14px;
+      letter-spacing:0.04em; padding:13px; border-radius:8px; margin-top:4px; }
+    .auth .err { color:var(--red); font-size:12px; margin-top:12px; min-height:16px; }
+    .auth .note { font-size:12px; color:var(--slate); margin-top:22px; line-height:1.6; }
+
+    /* shell */
+    .hd { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:20px 28px 16px; background:var(--cream); }
+    .hd .wm { font-family:var(--cond); font-weight:800; font-size:22px; color:var(--ink); text-transform:uppercase; letter-spacing:0.5px; }
+    .hd .wm span { color:var(--blue); }
+    .hd .co { text-align:right; }
+    .hd .co .t { font-family:var(--mono); font-size:10px; letter-spacing:2px; color:var(--blue); text-transform:uppercase; }
+    .hd .co .n { font-family:var(--cond); font-weight:700; font-size:17px; color:var(--ink); text-transform:uppercase; }
+    .tabs { display:flex; gap:4px; padding:14px 20px 0; border-bottom:1px solid #2b3138; overflow-x:auto; }
+    .tab { background:none; border:none; color:var(--gray); font-family:var(--mono); font-size:11px; letter-spacing:0.12em;
+      padding:10px 14px 12px; border-bottom:2px solid transparent; white-space:nowrap; }
+    .tab.on { color:var(--cream); border-bottom-color:var(--orange); }
+    .tab .b { display:inline-block; background:var(--orange); color:#fff; font-size:9px; border-radius:99px; padding:1px 6px; margin-left:5px; }
+    .main { padding:26px 28px 90px; }
+    @media (max-width:600px){ .hd,.main{padding-left:16px;padding-right:16px} }
+
+    .sect { font-family:var(--mono); font-size:10px; letter-spacing:0.18em; color:var(--gray); text-transform:uppercase; margin:26px 0 12px; }
+    .sect:first-child { margin-top:0; }
+    .card { background:var(--cream); color:var(--ink); border-radius:6px; padding:16px 18px; margin-bottom:12px; box-shadow:0 4px 14px rgba(0,0,0,0.3); }
+    .empty { color:var(--slate); font-size:13px; padding:20px 0; }
+    .pill { display:inline-block; font-family:var(--mono); font-size:9px; letter-spacing:1px; padding:3px 9px; border-radius:2px; text-transform:uppercase; font-weight:700; }
+    .pill.live { background:#DCF5E6; color:#1D7A45; }
+    .pill.in_build { background:#FDEBD2; color:#9A5E06; }
+    .pill.training { background:#DCEBF5; color:#16466E; }
+    .pill.planned { background:#ECECEC; color:#6b7580; }
+    .pill.maintenance { background:#FBE0DA; color:#B03A20; }
+    .pill.open { background:#FDEBD2; color:#9A5E06; }
+    .pill.in_progress { background:#DCEBF5; color:#16466E; }
+    .pill.waiting_client { background:#FBE0DA; color:#B03A20; }
+    .pill.resolved, .pill.closed, .pill.paid { background:#DCF5E6; color:#1D7A45; }
+    .pill.due { background:#FDEBD2; color:#9A5E06; }
+    .pill.upcoming { background:#ECECEC; color:#6b7580; }
+
+    .btn { border:none; border-radius:6px; font-weight:700; font-size:12px; padding:10px 16px; letter-spacing:0.04em; }
+    .btn-o { background:var(--orange); color:#fff; }
+    .btn-b { background:var(--blue); color:#fff; }
+    .btn-ghost { background:none; border:1px solid #2b3138; color:var(--gray); }
+
+    /* tickets */
+    .tk-row { display:flex; align-items:center; gap:12px; cursor:pointer; }
+    .tk-row .t { flex:1; font-weight:600; font-size:14px; }
+    .tk-row .d { font-family:var(--mono); font-size:10px; color:#8a8f96; }
+    .msg { border-radius:6px; padding:11px 14px; margin-bottom:9px; max-width:88%; font-size:13.5px; line-height:1.55; }
+    .msg.st { background:var(--blue-d); color:#fff; }
+    .msg.cl { background:var(--cream); color:var(--ink); margin-left:auto; }
+    .msg .who { font-family:var(--mono); font-size:9px; letter-spacing:1px; opacity:0.7; margin-bottom:3px; text-transform:uppercase; }
+    textarea, .newt input { width:100%; background:var(--ink2); border:1px solid #2b3138; border-radius:8px; color:var(--cream);
+      font-size:13.5px; padding:11px 13px; outline:none; font-family:var(--body); resize:vertical; }
+    textarea:focus, .newt input:focus { border-color:var(--blue); }
+
+    /* billing */
+    .inv { display:flex; align-items:center; gap:12px; }
+    .inv .l { flex:1; font-weight:600; font-size:14px; }
+    .inv .a { font-family:var(--cond); font-weight:800; font-size:20px; }
+    .tot { display:flex; gap:22px; margin-bottom:16px; }
+    .tot .x .v { font-family:var(--cond); font-weight:800; font-size:30px; color:var(--orange); }
+    .tot .x .k { font-family:var(--mono); font-size:9px; letter-spacing:1.5px; color:var(--gray); text-transform:uppercase; }
+
+    /* roadmap (compact port of execution roadmap) */
+    .rm-hero { background:radial-gradient(120% 100% at 0% 0%, var(--ink2) 0%, var(--ink) 60%); border:1px solid #2b3138; border-radius:8px; padding:20px; margin-bottom:18px; display:flex; justify-content:space-between; gap:14px; flex-wrap:wrap; }
+    .rm-hero .big { font-family:var(--cond); font-weight:800; font-size:36px; text-transform:uppercase; line-height:1; }
+    .rm-hero .big span { color:var(--slate); }
+    .rm-hero .k { font-family:var(--mono); font-size:9px; letter-spacing:2px; color:var(--gray); text-transform:uppercase; }
+    .rm-hero .v { font-family:var(--cond); font-weight:800; font-size:26px; }
+    .lvl { background:var(--cream); color:var(--ink); border-radius:6px; overflow:hidden; margin-bottom:14px; box-shadow:0 4px 14px rgba(0,0,0,0.3); }
+    .lvl.locked { opacity:0.55; }
+    .lvl-hd { display:flex; align-items:center; gap:12px; padding:13px 16px; background:linear-gradient(90deg,var(--blue-d),var(--blue)); color:#fff; }
+    .lvl.done .lvl-hd { background:linear-gradient(90deg,#14532d,var(--green)); }
+    .lvl.locked .lvl-hd { background:linear-gradient(90deg,#2b2f36,#3a414a); }
+    .lvl-num { width:38px; height:38px; border-radius:6px; background:rgba(255,255,255,0.15); border:2px solid rgba(255,255,255,0.35);
+      display:flex; align-items:center; justify-content:center; font-family:var(--cond); font-weight:800; font-size:20px; flex-shrink:0; }
+    .lvl-t { flex:1; font-family:var(--cond); font-weight:700; font-size:18px; text-transform:uppercase; line-height:1.1; }
+    .lvl-pct { font-family:var(--mono); font-size:11px; opacity:0.85; }
+    .lvl-bd { padding:12px 16px 14px; }
+    .step { display:flex; gap:10px; align-items:flex-start; padding:6px 0; border-top:1px solid #E5E2D9; }
+    .step:first-child { border-top:none; }
+    .step .bx { width:17px; height:17px; border:2px solid var(--blue); border-radius:4px; flex-shrink:0; margin-top:2px;
+      color:#fff; font-size:11px; line-height:13px; text-align:center; font-weight:700; }
+    .step.client .bx { border-color:var(--orange); cursor:pointer; }
+    .step.dn .bx { background:var(--green); border-color:var(--green); }
+    .step .lb { flex:0 0 78px; font-family:var(--mono); font-weight:700; font-size:8.5px; letter-spacing:0.5px; color:var(--blue); text-transform:uppercase; margin-top:4px; }
+    .step.client .lb { color:var(--orange); }
+    .step .tx { flex:1; font-size:12.5px; line-height:1.45; color:#2c3238; }
+    .step.dn .tx { color:#9aa1a8; text-decoration:line-through; }
+    .toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(90px); background:var(--ink2);
+      border:1px solid var(--green); color:#7CE0A3; font-family:var(--mono); font-size:12px; padding:10px 20px; border-radius:99px;
+      transition:transform .3s; z-index:60; }
+    .toast.show { transform:translateX(-50%) translateY(0); }
+    .signout { background:none; border:none; color:#8a8f96; font-family:var(--mono); font-size:10px; letter-spacing:1px; }
+  </style>
+</head>
+<body>
+
+<div class="sheet" id="root"><div class="auth"><div class="wordmark">STRUCT<span>TECH</span></div><div class="sub">CLIENT PORTAL</div><div class="empty">Loading…</div></div></div>
+<div class="toast" id="toast">✓ SAVED</div>
+
+<script>
+var SUPA_URL = 'https://ejlhrykcdfcyeooooodx.supabase.co';
+var SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVqbGhyeWtjZGZjeWVvb29vb2R4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM4NjQ1NjUsImV4cCI6MjA4OTQ0MDU2NX0._bqBaeJtYNaykrzc5rTzuYzgsRYeX3ikzFVrpbv_kr4';
+var sb = supabase.createClient(SUPA_URL, SUPA_KEY);
+
+var params = new URLSearchParams(location.search);
+var INVITE = params.get('invite');
+var org = null, member = null, roadmap = null, systems = [], tickets = [], invoices = [];
+var tab = 'roadmap', openTicket = null;
+
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+function toast(m){ var t=document.getElementById('toast'); t.textContent=m||'✓ SAVED'; t.classList.add('show'); setTimeout(function(){t.classList.remove('show');},1700); }
+function fmtD(d){ d=new Date(d); return (d.getMonth()+1)+'/'+d.getDate()+'/'+String(d.getFullYear()).slice(2); }
+
+/* ================= AUTH FLOW ================= */
+async function init(){
+  var s = await sb.auth.getSession();
+  if (INVITE && !s.data.session) return renderInvite();
+  if (!s.data.session) return renderLogin();
+  if (INVITE) { try { await sb.rpc('accept_invite', { p_token: INVITE, p_full_name: null }); history.replaceState({},'', location.pathname); } catch(e){} }
+  await loadAll();
+}
+
+function renderLogin(msg){
+  document.getElementById('root').innerHTML =
+    '<div class="auth"><div class="wordmark">STRUCT<span>TECH</span></div><div class="sub">CLIENT PORTAL</div>' +
+    '<input type="email" id="a-email" placeholder="Email" autocomplete="email">' +
+    '<input type="password" id="a-pw" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key===\'Enter\')doLogin()">' +
+    '<button onclick="doLogin()">SIGN IN →</button><div class="err" id="a-err">'+(msg||'')+'</div>' +
+    '<div class="note">Access is by invitation from StructTech.<br>Questions? jacob@structtek.com · 937.467.2660</div></div>';
+}
+async function doLogin(){
+  var r = await sb.auth.signInWithPassword({ email: document.getElementById('a-email').value.trim(), password: document.getElementById('a-pw').value });
+  if (r.error) { document.getElementById('a-err').textContent = r.error.message; return; }
+  init();
+}
+
+function renderInvite(){
+  document.getElementById('root').innerHTML =
+    '<div class="auth"><div class="wordmark">STRUCT<span>TECH</span></div><div class="sub">CLIENT PORTAL — CREATE YOUR ACCOUNT</div>' +
+    '<input type="text" id="a-name" placeholder="Your name" autocomplete="name">' +
+    '<input type="email" id="a-email" placeholder="Email" autocomplete="email">' +
+    '<input type="password" id="a-pw" placeholder="Create a password (8+ characters)" autocomplete="new-password">' +
+    '<button onclick="doSignup()">CREATE ACCOUNT →</button><div class="err" id="a-err"></div>' +
+    '<div class="note">Already have an account? <a href="#" style="color:var(--orange)" onclick="renderLogin();return false">Sign in</a> — your invite links automatically.</div></div>';
+}
+async function doSignup(){
+  var email = document.getElementById('a-email').value.trim();
+  var pw = document.getElementById('a-pw').value;
+  var name = document.getElementById('a-name').value.trim();
+  var r = await sb.auth.signUp({ email: email, password: pw });
+  if (r.error) { document.getElementById('a-err').textContent = r.error.message; return; }
+  if (!r.data.session) { document.getElementById('a-err').textContent = 'Check your email to confirm your account, then return to this link.'; return; }
+  try { await sb.rpc('accept_invite', { p_token: INVITE, p_full_name: name }); } catch(e){ document.getElementById('a-err').textContent = 'Invite error: ' + e.message; return; }
+  history.replaceState({},'', location.pathname);
+  init();
+}
+async function signOut(){ await sb.auth.signOut(); location.reload(); }
+
+/* ================= DATA ================= */
+async function loadAll(){
+  var m = await sb.from('org_members').select('*, organizations(*)').limit(1);
+  if (m.error || !m.data.length) {
+    document.getElementById('root').innerHTML = '<div class="auth"><div class="wordmark">STRUCT<span>TECH</span></div><div class="sub">CLIENT PORTAL</div>' +
+      '<div class="empty">Your account isn\'t linked to a business yet.<br>Contact jacob@structtek.com.</div>' +
+      '<button class="signout" onclick="signOut()">SIGN OUT</button></div>';
+    return;
+  }
+  member = m.data[0]; org = member.organizations;
+  var res = await Promise.all([
+    sb.from('client_roadmaps').select('*').eq('org_id', org.id).eq('status','active').limit(1),
+    sb.from('org_systems').select('*').eq('org_id', org.id).order('sort'),
+    sb.from('tickets').select('*').eq('org_id', org.id).order('updated_at', { ascending:false }),
+    sb.from('org_invoices').select('*').eq('org_id', org.id).order('created_at')
+  ]);
+  roadmap  = (res[0].data||[])[0] || null;
+  systems  = res[1].data || [];
+  tickets  = res[2].data || [];
+  invoices = res[3].data || [];
+  renderShell();
+}
+
+/* ================= SHELL ================= */
+function renderShell(){
+  var openT = tickets.filter(function(t){ return t.status !== 'closed' && t.status !== 'resolved'; }).length;
+  document.getElementById('root').innerHTML =
+    '<div class="hd"><div class="wm">STRUCT<span>TECH</span></div>' +
+    '<div class="co"><div class="t">Client Portal</div><div class="n">'+esc(org.name)+'</div></div></div>' +
+    '<div class="tabs">' +
+    '<button class="tab'+(tab==='roadmap'?' on':'')+'" onclick="go(\'roadmap\')">ROADMAP</button>' +
+    '<button class="tab'+(tab==='systems'?' on':'')+'" onclick="go(\'systems\')">YOUR SYSTEMS</button>' +
+    '<button class="tab'+(tab==='tickets'?' on':'')+'" onclick="go(\'tickets\')">REQUESTS'+(openT?'<span class="b">'+openT+'</span>':'')+'</button>' +
+    '<button class="tab'+(tab==='billing'?' on':'')+'" onclick="go(\'billing\')">BILLING</button>' +
+    '<button class="tab" style="margin-left:auto" onclick="signOut()">SIGN OUT</button>' +
+    '</div><div class="main" id="main"></div>';
+  if (tab==='roadmap') renderRoadmapTab();
+  else if (tab==='systems') renderSystems();
+  else if (tab==='tickets') renderTickets();
+  else if (tab==='billing') renderBilling();
+}
+function go(t){ tab=t; openTicket=null; renderShell(); }
+
+/* ================= ROADMAP ================= */
+function lvlStats(l){ var t=l.milestones.length,d=0; l.milestones.forEach(function(m){if(m.done)d++;}); return {t:t,d:d,complete:t>0&&d===t}; }
+function renderRoadmapTab(){
+  var el = document.getElementById('main');
+  if (!roadmap) { el.innerHTML = '<div class="empty">Your roadmap is being prepared — it will appear here.</div>'; return; }
+  var lvls = roadmap.levels||[], allT=0, allD=0, cleared=0;
+  lvls.forEach(function(l){ var s=lvlStats(l); allT+=s.t; allD+=s.d; if(s.complete)cleared++; });
+  var pct = allT?Math.round(allD/allT*100):0;
+  var html = '<div class="rm-hero"><div><div class="k">Mission Progress</div><div class="big">Level '+cleared+'<span> / '+lvls.length+'</span></div></div>' +
+    '<div><div class="k">Cleared</div><div class="v" style="color:#7CE0A3">'+pct+'%</div></div>' +
+    '<div><div class="k">Monthly leak at scan</div><div class="v" style="color:var(--orange)">$'+(roadmap.revenue_leak_monthly||0).toLocaleString()+'</div></div></div>';
+  var prevDone = true;
+  lvls.forEach(function(l,i){
+    var s = lvlStats(l);
+    var state = s.complete?'done':(prevDone?'active':'locked');
+    html += '<div class="lvl '+state+'"><div class="lvl-hd"><div class="lvl-num">'+(state==='locked'?'🔒':(i+1))+'</div>' +
+      '<div class="lvl-t">'+esc(l.title)+'</div><div class="lvl-pct">'+s.d+'/'+s.t+'</div></div>';
+    if (state !== 'locked') {
+      html += '<div class="lvl-bd">';
+      l.milestones.forEach(function(m,j){
+        var cl = m.owner==='client';
+        html += '<div class="step '+(cl?'client':'')+(m.done?' dn':'')+'">' +
+          '<div class="bx"'+(cl?' onclick="tgl('+i+','+j+')"':'')+'>'+(m.done?'✓':'')+'</div>' +
+          '<div class="lb">'+(cl?'YOUR MOVE':'STRUCTTECH')+'</div><div class="tx">'+esc(m.label)+'</div></div>';
+      });
+      html += '</div>';
+    }
+    html += '</div>';
+    prevDone = s.complete;
+  });
+  el.innerHTML = html;
+}
+async function tgl(li, mi){
+  var m = roadmap.levels[li].milestones[mi];
+  m.done = !m.done; m.done_at = m.done ? new Date().toISOString() : null;
+  renderRoadmapTab();
+  var r = await sb.from('client_roadmaps').update({ levels: roadmap.levels }).eq('id', roadmap.id);
+  if (!r.error) toast('✓ SAVED');
+}
+
+/* ================= SYSTEMS ================= */
+function renderSystems(){
+  var el = document.getElementById('main');
+  if (!systems.length) { el.innerHTML = '<div class="empty">Your custom systems will appear here as StructTech builds them.</div>'; return; }
+  el.innerHTML = '<div class="sect">Your Custom Systems</div>' + systems.map(function(s){
+    return '<div class="card"><div style="display:flex;align-items:center;gap:12px">' +
+      '<div style="flex:1"><div style="font-family:var(--cond);font-weight:700;font-size:18px;text-transform:uppercase">'+esc(s.name)+'</div>' +
+      (s.description?'<div style="font-size:12.5px;color:#4a5158;margin-top:3px">'+esc(s.description)+'</div>':'') + '</div>' +
+      '<span class="pill '+s.status+'">'+s.status.replace(/_/g,' ')+'</span>' +
+      (s.url?'<a href="'+esc(s.url)+'" target="_blank" class="btn btn-b" style="text-decoration:none">OPEN →</a>':'') +
+      '</div></div>';
+  }).join('');
+}
+
+/* ================= TICKETS ================= */
+function renderTickets(){
+  var el = document.getElementById('main');
+  if (openTicket) return renderThread(el);
+  var html = '<div class="sect">Requests & Communication</div>' +
+    '<div class="card newt"><div style="display:flex;gap:8px"><input id="nt-title" placeholder="What do you need? (e.g. Crew can\'t log in to the scheduler)">' +
+    '<button class="btn btn-o" onclick="newTicket()">SUBMIT</button></div></div>';
+  if (!tickets.length) html += '<div class="empty">No requests yet. Anything you need from StructTech — submit it above.</div>';
+  else html += tickets.map(function(t){
+    return '<div class="card tk-row" onclick="openTk(\''+t.id+'\')"><div class="t">'+esc(t.title)+'</div>' +
+      '<span class="pill '+t.status+'">'+t.status.replace(/_/g,' ')+'</span><div class="d">'+fmtD(t.updated_at)+'</div></div>';
+  }).join('');
+  el.innerHTML = html;
+}
+async function newTicket(){
+  var title = document.getElementById('nt-title').value.trim();
+  if (!title) return;
+  var r = await sb.from('tickets').insert({ org_id: org.id, title: title, created_by: member.user_id }).select();
+  if (r.error) { toast('⚠ FAILED'); return; }
+  tickets.unshift(r.data[0]); toast('✓ SUBMITTED'); renderTickets();
+}
+async function openTk(id){ openTicket = tickets.find(function(t){return t.id===id;}); renderTickets(); }
+async function renderThread(el){
+  el.innerHTML = '<button class="btn btn-ghost" onclick="openTicket=null;renderTickets()">← ALL REQUESTS</button>' +
+    '<div class="sect" style="margin-top:18px">'+esc(openTicket.title)+' · <span class="pill '+openTicket.status+'">'+openTicket.status.replace(/_/g,' ')+'</span></div>' +
+    '<div id="msgs" class="empty">Loading…</div>' +
+    '<textarea id="reply" rows="3" placeholder="Write a reply…" style="margin-top:12px"></textarea>' +
+    '<button class="btn btn-o" style="margin-top:8px" onclick="sendMsg()">SEND</button>';
+  var r = await sb.from('ticket_messages').select('*').eq('ticket_id', openTicket.id).order('created_at');
+  var box = document.getElementById('msgs'); if (!box) return;
+  var ms = r.data || [];
+  box.className = '';
+  box.innerHTML = ms.length ? ms.map(function(m){
+    return '<div class="msg '+(m.is_structtech?'st':'cl')+'"><div class="who">'+esc(m.author_name)+' · '+fmtD(m.created_at)+'</div>'+esc(m.content)+'</div>';
+  }).join('') : '<div class="empty">No messages yet — StructTech will reply here.</div>';
+}
+async function sendMsg(){
+  var txt = document.getElementById('reply').value.trim();
+  if (!txt) return;
+  var r = await sb.from('ticket_messages').insert({ ticket_id: openTicket.id, author_name: member.full_name || 'Client', is_structtech: false, content: txt });
+  if (r.error) { toast('⚠ FAILED'); return; }
+  document.getElementById('reply').value = '';
+  renderTickets(); openTk(openTicket.id);
+}
+
+/* ================= BILLING ================= */
+function renderBilling(){
+  var el = document.getElementById('main');
+  var due = invoices.filter(function(i){ return i.kind==='invoice' && i.status==='due'; });
+  var paid = invoices.filter(function(i){ return i.status==='paid'; });
+  var upcoming = invoices.filter(function(i){ return i.kind==='upcoming'; });
+  var dueSum = due.reduce(function(a,i){return a+i.amount;},0);
+  var paidSum = paid.reduce(function(a,i){return a+i.amount;},0);
+  var html = '<div class="tot"><div class="x"><div class="v">$'+dueSum.toLocaleString()+'</div><div class="k">Currently due</div></div>' +
+    '<div class="x"><div class="v" style="color:#7CE0A3">$'+paidSum.toLocaleString()+'</div><div class="k">Paid to date</div></div></div>';
+  function row(i){
+    return '<div class="card inv"><div class="l">'+esc(i.label)+(i.due_date?'<div style="font-family:var(--mono);font-size:10px;color:#8a8f96;font-weight:400">'+(i.kind==='upcoming'?'est. ':'due ')+fmtD(i.due_date)+'</div>':'')+'</div>' +
+      '<span class="pill '+(i.kind==='upcoming'?'upcoming':i.status)+'">'+(i.kind==='upcoming'?'UPCOMING':i.status)+'</span>' +
+      '<div class="a">$'+i.amount.toLocaleString()+'</div></div>';
+  }
+  if (due.length) html += '<div class="sect">Open Invoices</div>' + due.map(row).join('');
+  if (upcoming.length) html += '<div class="sect">Future Phases</div>' + upcoming.map(row).join('');
+  if (paid.length) html += '<div class="sect">Paid</div>' + paid.map(row).join('');
+  if (!invoices.length) html += '<div class="empty">No billing items yet.</div>';
+  el.innerHTML = html;
+}
+
+init();
+</script>
+</body>
+</html>
