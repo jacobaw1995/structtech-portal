@@ -114,6 +114,12 @@
     .step.client .lb { color:var(--orange); }
     .step .tx { flex:1; font-size:12.5px; line-height:1.45; color:#2c3238; }
     .step.dn .tx { color:#9aa1a8; text-decoration:line-through; }
+    .win { display:flex; align-items:center; gap:10px; margin-top:11px; padding:9px 13px; background:var(--ink); border-radius:4px; }
+    .win-tag { font-family:var(--mono); font-weight:700; font-size:9px; letter-spacing:1px; color:#16191d; background:#F5B84C; padding:3px 8px; border-radius:2px; white-space:nowrap; text-transform:uppercase; }
+    .win.dn .win-tag { background:#7CE0A3; }
+    .win-text { flex:1; font-family:var(--cond); font-weight:600; font-size:15px; letter-spacing:0.3px; color:var(--cream); text-transform:uppercase; }
+    .win .bx { width:17px; height:17px; border:2px solid #F5B84C; border-radius:4px; flex-shrink:0; color:#fff; font-size:11px; line-height:13px; text-align:center; font-weight:700; cursor:pointer; }
+    .win.dn .bx { background:var(--green); border-color:var(--green); }
     .toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(90px); background:var(--ink2);
       border:1px solid var(--green); color:#7CE0A3; font-family:var(--mono); font-size:12px; padding:10px 20px; border-radius:99px;
       transition:transform .3s; z-index:60; }
@@ -230,6 +236,11 @@ function go(t){ tab=t; openTicket=null; renderShell(); }
 
 /* ================= ROADMAP ================= */
 function lvlStats(l){ var t=l.milestones.length,d=0; l.milestones.forEach(function(m){if(m.done)d++;}); return {t:t,d:d,complete:t>0&&d===t}; }
+function winIndex(l){
+  for (var i=0;i<l.milestones.length;i++) if (l.milestones[i].win) return i;
+  for (var i=l.milestones.length-1;i>=0;i--) if (l.milestones[i].owner==='client') return i;
+  return -1;
+}
 function renderRoadmapTab(){
   var el = document.getElementById('main');
   if (!roadmap) { el.innerHTML = '<div class="empty">Your roadmap is being prepared — it will appear here.</div>'; return; }
@@ -246,13 +257,22 @@ function renderRoadmapTab(){
     html += '<div class="lvl '+state+'"><div class="lvl-hd"><div class="lvl-num">'+(state==='locked'?'🔒':(i+1))+'</div>' +
       '<div class="lvl-t">'+esc(l.title)+'</div><div class="lvl-pct">'+s.d+'/'+s.t+'</div></div>';
     if (state !== 'locked') {
+      var wIdx = winIndex(l);
       html += '<div class="lvl-bd">';
       l.milestones.forEach(function(m,j){
+        if (j === wIdx) return; // rendered as win condition strip below
         var cl = m.owner==='client';
         html += '<div class="step '+(cl?'client':'')+(m.done?' dn':'')+'">' +
           '<div class="bx"'+(cl?' onclick="tgl('+i+','+j+')"':'')+'>'+(m.done?'✓':'')+'</div>' +
           '<div class="lb">'+(cl?'YOUR MOVE':'STRUCTTECH')+'</div><div class="tx">'+esc(m.label)+'</div></div>';
       });
+      if (wIdx > -1) {
+        var wm = l.milestones[wIdx];
+        var wLabel = wm.label.replace(/^WIN CONDITION:?\s*/i, '');
+        html += '<div class="win'+(wm.done?' dn':'')+'"><span class="win-tag">'+(wm.done?'✓ CLEARED':'WIN CONDITION')+'</span>' +
+          '<span class="win-text">'+esc(wLabel)+'</span>' +
+          '<div class="bx"'+(wm.owner==='client'?' onclick="tgl('+i+','+wIdx+')"':'')+'>'+(wm.done?'✓':'')+'</div></div>';
+      }
       html += '</div>';
     }
     html += '</div>';
