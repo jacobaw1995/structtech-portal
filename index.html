@@ -120,6 +120,12 @@
     .win-text { flex:1; font-family:var(--cond); font-weight:600; font-size:15px; letter-spacing:0.3px; color:var(--cream); text-transform:uppercase; }
     .win .bx { width:17px; height:17px; border:2px solid #F5B84C; border-radius:4px; flex-shrink:0; color:#fff; font-size:11px; line-height:13px; text-align:center; font-weight:700; cursor:pointer; }
     .win.dn .bx { background:var(--green); border-color:var(--green); }
+    .next-ci-chip { display:inline-flex; align-items:center; gap:8px; background:var(--ink2); border:1px solid #2b3138; border-radius:99px;
+      padding:8px 14px; font-family:var(--mono); font-size:11px; color:var(--cream); margin-bottom:14px; }
+    .next-ci-chip b { color:var(--orange); }
+    .gantt-wrap { margin-bottom:6px; }
+    .ci-list-row { display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid #2b3138; font-size:13px; }
+    .ci-list-row .d { font-family:var(--mono); font-size:10px; color:var(--gray); }
     .toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(90px); background:var(--ink2);
       border:1px solid var(--green); color:#7CE0A3; font-family:var(--mono); font-size:12px; padding:10px 20px; border-radius:99px;
       transition:transform .3s; z-index:60; }
@@ -140,6 +146,7 @@ var sb = supabase.createClient(SUPA_URL, SUPA_KEY);
 var params = new URLSearchParams(location.search);
 var INVITE = params.get('invite');
 var org = null, member = null, roadmap = null, systems = [], tickets = [], invoices = [];
+var engagement = null, engLevels = [], engMilestones = [], engCheckins = [];
 var tab = 'roadmap', openTicket = null;
 
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
@@ -205,12 +212,20 @@ async function loadAll(){
     sb.from('client_roadmaps').select('*').eq('org_id', org.id).eq('status','active').limit(1),
     sb.from('org_systems').select('*').eq('org_id', org.id).order('sort'),
     sb.from('tickets').select('*').eq('org_id', org.id).order('updated_at', { ascending:false }),
-    sb.from('org_invoices').select('*').eq('org_id', org.id).order('created_at')
+    sb.from('org_invoices').select('*').eq('org_id', org.id).order('created_at'),
+    sb.from('engagements').select('*').eq('org_id', org.id).limit(1),
+    sb.from('engagement_levels').select('*').eq('org_id', org.id).order('level_no'),
+    sb.from('engagement_milestones').select('*').eq('org_id', org.id).order('sort_order'),
+    sb.from('engagement_checkins').select('*').eq('org_id', org.id).order('scheduled_at')
   ]);
   roadmap  = (res[0].data||[])[0] || null;
   systems  = res[1].data || [];
   tickets  = res[2].data || [];
   invoices = res[3].data || [];
+  engagement    = (res[4].data||[])[0] || null;
+  engLevels     = res[5].data || [];
+  engMilestones = res[6].data || [];
+  engCheckins   = res[7].data || [];
   renderShell();
 }
 
@@ -243,6 +258,7 @@ function winIndex(l){
 }
 function renderRoadmapTab(){
   var el = document.getElementById('main');
+  if (engagement) return renderEngagementTab(el);
   if (!roadmap) { el.innerHTML = '<div class="empty">Your roadmap is being prepared — it will appear here.</div>'; return; }
   var lvls = roadmap.levels||[], allT=0, allD=0, cleared=0;
   lvls.forEach(function(l){ var s=lvlStats(l); allT+=s.t; allD+=s.d; if(s.complete)cleared++; });
@@ -286,6 +302,116 @@ async function tgl(li, mi){
   renderRoadmapTab();
   var r = await sb.from('client_roadmaps').update({ levels: roadmap.levels }).eq('id', roadmap.id);
   if (!r.error) toast('✓ SAVED');
+}
+
+/* ================= ENGAGEMENT SCHEDULE (Gantt) ================= */
+function engLvlStats(l){ var ms=l.milestones||[]; var t=ms.length, d=ms.filter(function(m){return m.status==='complete';}).length; return {t:t,d:d,complete:t>0&&d===t}; }
+function escSvg(s){ s=String(s==null?'':s); if (s.length>34) s=s.slice(0,32)+'…'; return esc(s); }
+
+function buildGanttSVG(lvls, curIdx){
+  var W=760, labelH=16, barH=22, rowH=labelH+barH, gap=10, padL=4, padR=4, topPad=6;
+  var H = topPad*2 + lvls.length*(rowH+gap) - gap;
+  var dateMode = lvls.length>0 && lvls.every(function(l){ return l.planned_start && l.planned_end; });
+  var minD, maxD;
+  if (dateMode) {
+    minD = Math.min.apply(null, lvls.map(function(l){ return new Date(l.planned_start).getTime(); }));
+    maxD = Math.max.apply(null, lvls.map(function(l){ return new Date(l.planned_end).getTime(); }));
+    if (maxD <= minD) maxD = minD + 7*86400000;
+  }
+  var rows = '';
+  lvls.forEach(function(l,i){
+    var rowY = topPad + i*(rowH+gap);
+    var barY = rowY + labelH;
+    var x, w;
+    if (dateMode) {
+      var s = new Date(l.planned_start).getTime(), e = new Date(l.planned_end).getTime();
+      x = padL + (s-minD)/(maxD-minD) * (W-padL-padR);
+      w = Math.max(24, (e-s)/(maxD-minD) * (W-padL-padR));
+    } else {
+      var seg = (W-padL-padR)/lvls.length;
+      x = padL + i*seg + 2; w = seg - 4;
+    }
+    var fill = l.status==='complete' ? '#2E9E5B' : l.status==='blocked' ? '#E24B26' : (i===curIdx ? '#D9820A' : '#3a414a');
+    var op = (curIdx>-1 && i>curIdx) ? '0.35' : '1';
+    rows += '<text x="'+padL+'" y="'+(rowY+11)+'" font-family="Barlow Condensed" font-weight="700" font-size="11" fill="#8a939d">L'+l.level_no+' — '+escSvg(l.title)+'</text>';
+    rows += '<rect x="'+x.toFixed(1)+'" y="'+barY+'" width="'+w.toFixed(1)+'" height="'+barH+'" rx="5" fill="'+fill+'" opacity="'+op+'"/>';
+    var ms = l.milestones||[], n = ms.length;
+    ms.forEach(function(m,j){
+      var mx = x + w*((j+1)/(n+1)), my = barY+barH/2;
+      var sz = m.is_win_condition ? 8 : 5;
+      var mfill = m.status==='complete' ? '#7CE0A3' : (m.is_win_condition ? '#F5B84C' : '#0d0f12');
+      rows += '<rect x="'+(mx-sz/2).toFixed(1)+'" y="'+(my-sz/2).toFixed(1)+'" width="'+sz+'" height="'+sz+'" transform="rotate(45 '+mx.toFixed(1)+' '+my.toFixed(1)+')" fill="'+mfill+'" stroke="#16191d" stroke-width="1"/>';
+    });
+  });
+  return '<div class="gantt-wrap"><svg viewBox="0 0 '+W+' '+H+'" width="100%" height="'+H+'" xmlns="http://www.w3.org/2000/svg">'+rows+'</svg></div>' +
+    (dateMode ? '' : '<div class="empty" style="padding:0 0 14px;font-size:11px">Target windows not set yet — showing level order only.</div>');
+}
+
+function renderEngagementTab(el){
+  var lvls = engLevels.slice().sort(function(a,b){ return a.level_no-b.level_no; });
+  lvls.forEach(function(l){ l.milestones = engMilestones.filter(function(m){ return m.level_id===l.id; }).sort(function(a,b){ return a.sort_order-b.sort_order; }); });
+  var allT=0, allD=0, cleared=0, curIdx=-1;
+  lvls.forEach(function(l,i){ var s=engLvlStats(l); allT+=s.t; allD+=s.d; if (s.complete) cleared++; else if (curIdx===-1) curIdx=i; });
+  var pct = allT ? Math.round(allD/allT*100) : 0;
+
+  var nextCi = engCheckins.filter(function(c){ return c.status==='scheduled' && new Date(c.scheduled_at) >= new Date(); })
+    .sort(function(a,b){ return new Date(a.scheduled_at)-new Date(b.scheduled_at); })[0];
+
+  var html = '<div class="rm-hero"><div><div class="k">Mission Progress</div><div class="big">Level '+cleared+'<span> / '+lvls.length+'</span></div></div>' +
+    '<div><div class="k">Cleared</div><div class="v" style="color:#7CE0A3">'+pct+'%</div></div>' +
+    '<div><div class="k">Monthly leak at scan</div><div class="v" style="color:var(--orange)">$'+((roadmap&&roadmap.revenue_leak_monthly)||0).toLocaleString()+'</div></div></div>';
+
+  if (nextCi) {
+    var d = new Date(nextCi.scheduled_at);
+    html += '<div class="next-ci-chip">📅 NEXT CHECK-IN — <b>'+esc(nextCi.title)+'</b> · '+fmtD(nextCi.scheduled_at)+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')+'</div>';
+  }
+
+  html += buildGanttSVG(lvls, curIdx);
+
+  var prevDone = true;
+  lvls.forEach(function(l){
+    var s = engLvlStats(l);
+    var state = s.complete ? 'done' : (prevDone ? 'active' : 'locked');
+    html += '<div class="lvl '+state+'"><div class="lvl-hd"><div class="lvl-num">'+(state==='locked'?'🔒':l.level_no)+'</div>' +
+      '<div class="lvl-t">'+esc(l.title)+'</div><div class="lvl-pct">'+s.d+'/'+s.t+'</div></div>';
+    if (state !== 'locked') {
+      html += '<div class="lvl-bd">';
+      l.milestones.forEach(function(m){
+        if (m.is_win_condition) return;
+        var cl = m.owner==='client';
+        html += '<div class="step '+(cl?'client':'')+(m.status==='complete'?' dn':'')+'">' +
+          '<div class="bx"'+(cl?' onclick="tglEng(\''+m.id+'\')"':'')+'>'+(m.status==='complete'?'✓':'')+'</div>' +
+          '<div class="lb">'+(cl?'YOUR MOVE':'STRUCTTECH')+'</div><div class="tx">'+esc(m.body)+'</div></div>';
+      });
+      var wm = l.milestones.find(function(m){ return m.is_win_condition; });
+      if (wm) {
+        html += '<div class="win'+(wm.status==='complete'?' dn':'')+'"><span class="win-tag">'+(wm.status==='complete'?'✓ CLEARED':'WIN CONDITION')+'</span>' +
+          '<span class="win-text">'+esc(wm.body)+'</span>' +
+          '<div class="bx"'+(wm.owner==='client'?' onclick="tglEng(\''+wm.id+'\')"':'')+'>'+(wm.status==='complete'?'✓':'')+'</div></div>';
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+    prevDone = s.complete;
+  });
+
+  if (engCheckins.length) {
+    html += '<div class="sect">Check-Ins</div>';
+    engCheckins.slice().sort(function(a,b){ return new Date(a.scheduled_at)-new Date(b.scheduled_at); }).forEach(function(c){
+      var pillCls = c.status==='done' ? 'resolved' : c.status==='missed' ? 'waiting_client' : 'in_progress';
+      html += '<div class="ci-list-row"><span style="flex:1">'+esc(c.title)+'</span><span class="d">'+fmtD(c.scheduled_at)+'</span><span class="pill '+pillCls+'">'+c.status.toUpperCase()+'</span></div>';
+    });
+  }
+
+  el.innerHTML = html;
+}
+async function tglEng(id){
+  var m = engMilestones.find(function(x){ return x.id===id; });
+  var done = m.status !== 'complete';
+  m.status = done ? 'complete' : 'open'; m.completed_at = done ? new Date().toISOString() : null;
+  renderEngagementTab(document.getElementById('main'));
+  var r = await sb.from('engagement_milestones').update({ status:m.status, completed_at:m.completed_at }).eq('id', id);
+  if (!r.error) toast('✓ SAVED'); else toast('⚠ FAILED');
 }
 
 /* ================= SYSTEMS ================= */
